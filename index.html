@@ -250,11 +250,11 @@ details.fix .inner{padding:0 14px 14px}
     <div id="lg-edit" hidden>
       <h2 class="sm">Update the table</h2>
       <div class="panel paste">
-        <p class="hint" style="margin:0">On Soccer Sixes, select the league table, copy it, and paste it below. Include the header row or leave it out, either works.</p>
+        <p class="hint" style="margin:0">On Soccer Sixes, select the league table and copy it. Then tap <b>Paste from clipboard</b>, or press and hold in the box and choose Paste.</p>
         <textarea id="lg-text" placeholder="Paste the table here" spellcheck="false" aria-label="Pasted league table"></textarea>
         <div id="lg-msg" class="hint" aria-live="polite"></div>
         <div id="lg-prev" class="pv" hidden></div>
-        <div class="actions"><button class="btn alt" id="lg-clear" type="button">Clear</button><button class="btn" id="lg-save" type="button" disabled>Save table</button></div>
+        <div class="actions"><button class="btn lav" id="lg-paste" type="button" style="margin-right:auto">Paste from clipboard</button><button class="btn alt" id="lg-clear" type="button">Clear</button><button class="btn" id="lg-save" type="button" disabled>Save table</button></div>
       </div>
     </div>
   </section>
@@ -595,6 +595,11 @@ function previewLeague(){
   else{ msg.textContent=rows.length+' teams found. Check the preview, then save.'; msg.className='hint'; }
 }
 $('lg-text').addEventListener('input',previewLeague);
+$('lg-paste').addEventListener('click',async()=>{
+  const ta=$('lg-text');
+  try{ const t=await navigator.clipboard.readText(); if(!t||!t.trim()){ toast('Clipboard is empty. Copy the table first.'); return; } ta.value=t; previewLeague(); }
+  catch(_){ ta.focus(); toast('Your browser blocked that. Press and hold in the box and choose Paste.'); }
+});
 $('lg-clear').addEventListener('click',()=>{ $('lg-text').value=''; previewLeague(); });
 $('lg-save').addEventListener('click',async()=>{
   if(!lgRows.length||!S.db) return;
