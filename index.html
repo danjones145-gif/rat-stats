@@ -534,26 +534,28 @@ function render(){
 /* ---------- League tab ---------- */
 const NUMS=['pl','w','d','l','f','a','gd','pt'];
 function parseLeague(text){
-  const rows=[];
-  const lines=String(text||'').replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean);
-  const re=/^(.*?)((?:[\s\t]+[-+−]?\d+){8})\s*$/;
-  lines.forEach(line=>{
-    const m=line.match(re); if(!m) return;
-    const nums=m[2].trim().split(/\s+/).map(x=>parseInt(x.replace('−','-'),10));
-    let name=m[1].trim().replace(/\s+/g,' ');
-    const lead=name.match(/^(\d+)\s+(.+)$/);
-    if(lead&&+lead[1]===rows.length+1) name=lead[2];
-    if(!name||nums.some(Number.isNaN)) return;
-    rows.push({name,nums});
+  const rows=[], isNum=x=>/^[-+−]?\d+$/.test(x), toN=x=>parseInt(x.replace('−','-'),10);
+  const HEAD=/^(team name|team|name|pl|p|played|w|d|l|f|a|gd|pts?|points|#|pos|position)$/i;
+  let toks=[];
+  String(text||'').replace(/\r/g,'').split(/[\t\n]+/).forEach(c=>{
+    c=c.replace(/ /g,' ').trim(); if(!c) return;
+    const m=c.match(/^(.*?)((?:\s+[-+−]?\d+)+)$/);
+    if(m&&m[1].trim()&&!isNum(c)){ toks.push(m[1].trim()); m[2].trim().split(/\s+/).forEach(x=>toks.push(x)); }
+    else if(!isNum(c)&&/\s/.test(c)&&c.split(/\s+/).every(isNum)) c.split(/\s+/).forEach(x=>toks.push(x));
+    else toks.push(c);
   });
-  if(!rows.length){
-    const t=String(text||'').split(/[\t\n]/).map(x=>x.trim()).filter(Boolean).filter(x=>!/^(team name|team|pl|w|d|l|f|a|gd|pts?|#|pos)$/i.test(x));
-    const size=t.length%10===0?10:(t.length%9===0?9:0);
-    if(size) for(let i=0;i<t.length;i+=size){
-      const c=t.slice(i,i+size), nm=size===10?c[1]:c[0], nu=c.slice(size-8).map(x=>parseInt(x,10));
-      if(nm&&!nu.some(Number.isNaN)) rows.push({name:nm.replace(/\s+/g,' '),nums:nu});
-    }
-  }
+  let name='', nums=[];
+  const flush=()=>{
+    if(name&&nums.length>=8){ rows.push({name:name.replace(/\s+/g,' ').trim(),nums:nums.slice(0,8).map(toN)}); }
+    name=''; nums=[];
+  };
+  toks.forEach(t=>{
+    if(isNum(t)){ if(name) nums.push(t); /* a number before any name is the position */ }
+    else if(HEAD.test(t)){ /* header cell */ }
+    else { if(nums.length) flush(); if(name&&!nums.length) name+=' '+t; else name=t; }
+  });
+  flush();
+  rows.forEach((r,i)=>{ const lead=r.name.match(/^(\d+)\s+(.+)$/); if(lead&&+lead[1]===i+1) r.name=lead[2]; });
   return rows.map((r,i)=>{ const o={pos:i+1,name:r.name}; NUMS.forEach((k,j)=>o[k]=r.nums[j]); return o; });
 }
 function checkLeague(rows){
@@ -586,7 +588,7 @@ function previewLeague(){
   const rows=parseLeague($('lg-text').value), msg=$('lg-msg'), pv=$('lg-prev'), sv=$('lg-save');
   lgRows=rows; pv.hidden=!rows.length; sv.disabled=!rows.length;
   if(!$('lg-text').value.trim()){ msg.textContent=''; msg.className='hint'; return; }
-  if(!rows.length){ msg.textContent='Could not find any teams. Each row needs the team name followed by Pl, W, D, L, F, A, GD and Pt.'; msg.className='hint warn'; return; }
+  if(!rows.length){ msg.textContent='Could not find any teams in what was pasted ('+$('lg-text').value.length+' characters). Each team needs a name followed by Pl, W, D, L, F, A, GD and Pt.'; msg.className='hint warn'; return; }
   pv.innerHTML=`<div class="lg">${leagueHtml(rows)}</div>`;
   const bad=checkLeague(rows);
   if(bad.length){ msg.textContent=rows.length+' teams found, but the numbers do not add up for: '+bad.join(', ')+'. Check the preview before saving.'; msg.className='hint warn'; }
@@ -598,7 +600,7 @@ $('lg-save').addEventListener('click',async()=>{
   if(!lgRows.length||!S.db) return;
   const btn=$('lg-save'); btn.disabled=true;
   try{ await S.db.doc('config/league').set({rows:lgRows,updated:new Date().toISOString()}); $('lg-text').value=''; previewLeague(); toast('League table saved'); }
-  catch(_){ toast('Could not save. Try again.'); btn.disabled=false; }
+  catch(e){ toast('Could not save: '+((e&&(e.message||e.code))||'unknown error')); btn.disabled=false; }
 });
 
 /* ---------- Thursday form (inline on Results) ---------- */
