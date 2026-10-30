@@ -146,6 +146,25 @@ label.f input,label.f textarea,label.f select{text-transform:none;letter-spacing
 details.fix summary{cursor:pointer;font-weight:700;padding:12px 14px}
 details.fix .inner{padding:0 14px 14px}
 
+
+/* league table (Soccer Sixes, pasted in) */
+#p-league{display:grid;gap:18px}
+.lg .tr{grid-template-columns:1.4rem minmax(0,1fr) 1.5rem 1.5rem 1.5rem 1.5rem 2.2rem 2rem;padding-inline:8px}
+.lg .tr .nm{font-size:14px;overflow-wrap:break-word}
+.lg .tr .rk{font-size:17px}
+.lg .tr.h .nm{font-size:11px}
+.lg .tr .f2{display:none}
+@media (min-width:520px){.lg .tr:not(.h) .nm{font-size:15px}.lg .tr{padding-inline:12px;grid-template-columns:2.1rem minmax(0,1fr) 2.2rem 2.2rem 2.2rem 2.2rem 2.4rem 2.4rem 2.7rem 2.6rem}.lg .tr .f2{display:block}}
+.lg .tr .nm small{display:block;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.lg .tr .pt{font-weight:700;color:var(--ink)}
+.lg .tr.me{background:color-mix(in srgb,var(--lav) 38%,var(--surface));box-shadow:inset 4px 0 0 var(--brand)}
+.lg .tr.me .rk{color:var(--brand)}
+:root[data-theme="dark"] .lg .tr.me .rk{color:var(--lav)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .lg .tr.me .rk{color:var(--lav)}}
+.paste{padding:14px;display:grid;gap:10px}
+.paste textarea{min-height:130px;font:13px/1.35 ui-monospace,Menlo,Consolas,monospace;white-space:pre}
+.paste .pv{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+
 /* seasons */
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px}
 .chips button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-weight:600;font-size:13px}
@@ -197,6 +216,7 @@ details.fix .inner{padding:0 14px 14px}
     </div>
     <nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
       <button role="tab" data-tab="table" aria-selected="true">Table</button>
+      <button role="tab" data-tab="league" aria-selected="false">League</button>
       <button role="tab" data-tab="results" aria-selected="false">Results</button>
       <button role="tab" data-tab="alltime" aria-selected="false">All-Time</button>
       <button role="tab" data-tab="seasons" aria-selected="false">Seasons</button>
@@ -219,6 +239,24 @@ details.fix .inner{padding:0 14px 14px}
     <h2>League table</h2>
     <div id="t-table" class="panel tbl"></div>
     <p class="note" style="margin:8px 2px 0">Ranked by apps, then goals, then ROTM. Equal rank means level on all three.</p>
+  </section>
+
+  <section id="p-league" hidden>
+    <div>
+      <div class="bar"><h2>Premiership</h2><span class="note" id="lg-upd"></span></div>
+      <div id="lg-strip" class="panel strip" style="margin-bottom:12px" hidden></div>
+      <div id="lg-table" class="panel tbl lg"></div>
+    </div>
+    <div id="lg-edit" hidden>
+      <h2 class="sm">Update the table</h2>
+      <div class="panel paste">
+        <p class="hint" style="margin:0">On Soccer Sixes, select the league table, copy it, and paste it below. Include the header row or leave it out, either works.</p>
+        <textarea id="lg-text" placeholder="Paste the table here" spellcheck="false" aria-label="Pasted league table"></textarea>
+        <div id="lg-msg" class="hint" aria-live="polite"></div>
+        <div id="lg-prev" class="pv" hidden></div>
+        <div class="actions"><button class="btn alt" id="lg-clear" type="button">Clear</button><button class="btn" id="lg-save" type="button" disabled>Save table</button></div>
+      </div>
+    </div>
   </section>
 
   <section id="p-results" hidden>
@@ -331,7 +369,7 @@ function kittyBalance(money,ledger){
 (function(){
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const S={tab:'table',games:[],seasons:[],ledger:[],cur:null,cfg:null,money:null,db:null,canWrite:true,canEdit:true,seasonSel:null,loaded:{},err:null};
+const S={tab:'table',league:null,games:[],seasons:[],ledger:[],cur:null,cfg:null,money:null,db:null,canWrite:true,canEdit:true,seasonSel:null,loaded:{},err:null};
 let raf=0;
 
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>{t.hidden=true},3200); }
@@ -483,13 +521,85 @@ function render(){
   $('notice').innerHTML=note;
   document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===S.tab)));
   ['table','table2','table3'].forEach(k=>$('p-'+k).hidden=S.tab!=='table');
-  ['results','alltime','seasons','kitty'].forEach(k=>$('p-'+k).hidden=S.tab!==k);
+  ['league','results','alltime','seasons','kitty'].forEach(k=>$('p-'+k).hidden=S.tab!==k);
   if(S.tab==='table') renderTable();
+  else if(S.tab==='league') renderLeague();
   else if(S.tab==='results'){ renderResults(); syncForm(); renderFix(); }
   else if(S.tab==='alltime') renderAll();
   else if(S.tab==='seasons') renderSeasons();
   else if(S.tab==='kitty') renderKitty();
 }
+
+
+/* ---------- League tab ---------- */
+const NUMS=['pl','w','d','l','f','a','gd','pt'];
+function parseLeague(text){
+  const rows=[];
+  const lines=String(text||'').replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean);
+  const re=/^(.*?)((?:[\s\t]+[-+−]?\d+){8})\s*$/;
+  lines.forEach(line=>{
+    const m=line.match(re); if(!m) return;
+    const nums=m[2].trim().split(/\s+/).map(x=>parseInt(x.replace('−','-'),10));
+    let name=m[1].trim().replace(/\s+/g,' ');
+    const lead=name.match(/^(\d+)\s+(.+)$/);
+    if(lead&&+lead[1]===rows.length+1) name=lead[2];
+    if(!name||nums.some(Number.isNaN)) return;
+    rows.push({name,nums});
+  });
+  if(!rows.length){
+    const t=String(text||'').split(/[\t\n]/).map(x=>x.trim()).filter(Boolean).filter(x=>!/^(team name|team|pl|w|d|l|f|a|gd|pts?|#|pos)$/i.test(x));
+    const size=t.length%10===0?10:(t.length%9===0?9:0);
+    if(size) for(let i=0;i<t.length;i+=size){
+      const c=t.slice(i,i+size), nm=size===10?c[1]:c[0], nu=c.slice(size-8).map(x=>parseInt(x,10));
+      if(nm&&!nu.some(Number.isNaN)) rows.push({name:nm.replace(/\s+/g,' '),nums:nu});
+    }
+  }
+  return rows.map((r,i)=>{ const o={pos:i+1,name:r.name}; NUMS.forEach((k,j)=>o[k]=r.nums[j]); return o; });
+}
+function checkLeague(rows){
+  const bad=[];
+  rows.forEach(r=>{ if(r.w+r.d+r.l!==r.pl||r.f-r.a!==r.gd) bad.push(r.name); });
+  return bad;
+}
+function splitName(n){ const m=String(n).match(/^(.*?)\s*\(([^)]+)\)\s*$/); return m?{team:m[1],kit:m[2]}:{team:n,kit:''}; }
+function leagueHtml(rows){
+  let h='<div class="tr h"><span>#</span><span class="nm">Team</span><span>Pl</span><span>W</span><span>D</span><span>L</span><span class="f2">F</span><span class="f2">A</span><span>GD</span><span>Pts</span></div>';
+  rows.forEach(r=>{
+    const t=splitName(r.name), me=/\brats\b/i.test(r.name), gd=r.gd>0?'+'+r.gd:String(r.gd);
+    h+=`<div class="tr ${me?'me':''} ${r.pos===1?'top1':''}"><span class="rk num">${esc(r.pos)}</span><span class="nm">${esc(t.team)}${t.kit?`<small>${esc(t.kit)}</small>`:''}</span><span class="c num">${r.pl}</span><span class="c num">${r.w}</span><span class="c num">${r.d}</span><span class="c num">${r.l}</span><span class="c f2 num">${r.f}</span><span class="c f2 num">${r.a}</span><span class="c num">${gd}</span><span class="c pt num">${r.pt}</span></div>`;
+  });
+  return h;
+}
+function renderLeague(){
+  const L=S.league, rows=(L&&L.rows)||[];
+  $('lg-edit').hidden=!S.canEdit;
+  const upd=$('lg-upd');
+  if(L&&L.updated){ const d=new Date(L.updated); upd.textContent=isNaN(d)?'':'Updated '+d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}); } else upd.textContent='';
+  const st=$('lg-strip'), me=rows.find(r=>/\brats\b/i.test(r.name));
+  st.hidden=!me;
+  if(me) strip(st,[[me.pos+ordinal(me.pos),'Position'],[me.pt,'Points'],[me.w+'-'+me.d+'-'+me.l,'W-D-L'],[me.gd>0?'+'+me.gd:me.gd,'Goal diff']]);
+  $('lg-table').innerHTML=rows.length?leagueHtml(rows):'<div class="empty">No league table yet. Paste it in below.</div>';
+}
+function ordinal(n){ const v=n%100; if(v>=11&&v<=13) return 'th'; return ({1:'st',2:'nd',3:'rd'})[n%10]||'th'; }
+let lgRows=[];
+function previewLeague(){
+  const rows=parseLeague($('lg-text').value), msg=$('lg-msg'), pv=$('lg-prev'), sv=$('lg-save');
+  lgRows=rows; pv.hidden=!rows.length; sv.disabled=!rows.length;
+  if(!$('lg-text').value.trim()){ msg.textContent=''; msg.className='hint'; return; }
+  if(!rows.length){ msg.textContent='Could not find any teams. Each row needs the team name followed by Pl, W, D, L, F, A, GD and Pt.'; msg.className='hint warn'; return; }
+  pv.innerHTML=`<div class="lg">${leagueHtml(rows)}</div>`;
+  const bad=checkLeague(rows);
+  if(bad.length){ msg.textContent=rows.length+' teams found, but the numbers do not add up for: '+bad.join(', ')+'. Check the preview before saving.'; msg.className='hint warn'; }
+  else{ msg.textContent=rows.length+' teams found. Check the preview, then save.'; msg.className='hint'; }
+}
+$('lg-text').addEventListener('input',previewLeague);
+$('lg-clear').addEventListener('click',()=>{ $('lg-text').value=''; previewLeague(); });
+$('lg-save').addEventListener('click',async()=>{
+  if(!lgRows.length||!S.db) return;
+  const btn=$('lg-save'); btn.disabled=true;
+  try{ await S.db.doc('config/league').set({rows:lgRows,updated:new Date().toISOString()}); $('lg-text').value=''; previewLeague(); toast('League table saved'); }
+  catch(_){ toast('Could not save. Try again.'); btn.disabled=false; }
+});
 
 /* ---------- Thursday form (inline on Results) ---------- */
 let F=null, formBuilt=false, sig='';
@@ -645,7 +755,7 @@ async function seedData(){
   }catch(e){ if(btn) btn.disabled=false; toast('Could not load the starting data'); }
 }
 $('notice').addEventListener('click',e=>{ if(e.target.id==='seedBtn') seedData(); });
-try{ const t=localStorage.getItem('rats-tab'); if(t&&['table','results','alltime','seasons','kitty'].includes(t)) S.tab=t; }catch(_){}
+try{ const t=localStorage.getItem('rats-tab'); if(t&&['table','league','results','alltime','seasons','kitty'].includes(t)) S.tab=t; }catch(_){}
 render();
 (function(){
   const cfg=window.SUPABASE_CONFIG;
@@ -658,6 +768,7 @@ render();
   db.doc('current/season').onSnapshot(s=>{ S.cur=s.exists?s.data():null; S.loaded.cur=1; schedule(); },fail);
   db.doc('config/main').onSnapshot(s=>{ S.cfg=s.exists?s.data():null; S.loaded.cfg=1; schedule(); },fail);
   db.doc('money/current').onSnapshot(s=>{ S.money=s.exists?s.data():null; S.loaded.money=1; schedule(); },fail);
+  db.doc('config/league').onSnapshot(s=>{ S.league=s.exists?s.data():null; S.loaded.league=1; schedule(); },()=>{});
 })();
 })();
 </script>
